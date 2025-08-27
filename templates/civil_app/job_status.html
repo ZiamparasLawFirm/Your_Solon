@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="el">
+  <head>
+    <meta charset="utf-8" />
+    <title>Κατάσταση Αναζήτησης</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- HTMX for simple polling to a JSON endpoint -->
+    <script src="https://unpkg.com/htmx.org@2.0.2"></script>
+  </head>
+  <body class="bg-gray-50 min-h-screen">
+    <div class="max-w-3xl mx-auto px-4 py-10">
+      <div class="flex justify-between items-center mb-4">
+        <h1 class="text-xl font-semibold">Κατάσταση Αναζήτησης</h1>
+        <a href="/civil/" class="text-sm text-blue-700 hover:underline">Νέα Αναζήτηση</a>
+      </div>
+
+      <!-- This DIV polls the JSON API every 1.5s and swaps in the response HTML -->
+      <div id="status"
+           hx-get="{% url 'civil_app:job_status_api' job.id %}"
+           hx-trigger="load, every 1500ms"
+           hx-swap="innerHTML">
+
+        <div class="animate-pulse text-gray-600">
+          Ελέγχω... Παρακαλώ περιμένετε...
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Optional: if you want to render the JSON nicely client-side, you could:
+      document.addEventListener('htmx:afterSwap', (ev) => {
+        // When the hx-swap completes, if the swapped content is JSON (from our API),
+        // you can render it. For MVP, our API returns JSON only to XHR requests,
+        // so here we rely on the server returning small HTML snippets or text.
+      });
+    </script>
+  </body>
+</html>

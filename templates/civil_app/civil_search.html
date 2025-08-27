@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="el">
+  <head>
+    <meta charset="utf-8" />
+    <title>Αστικά — Αναζήτηση Πορείας</title>
+    <!-- Tailwind via CDN for quick dev styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-50 min-h-screen">
+    <div class="max-w-3xl mx-auto px-4 py-10">
+      <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-semibold">Αστικά — Πορεία Υπόθεσης</h1>
+        <a href="/accounts/logout/" class="text-sm text-blue-700 hover:underline">Αποσύνδεση</a>
+      </div>
+
+      <form method="post" class="bg-white shadow rounded-2xl p-6 space-y-4">
+        {% csrf_token %}
+        <div>
+          <label class="block text-sm font-medium mb-1">Όνομα Πελάτη</label>
+          {{ form.client_name }}
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Κατάστημα</label>
+          {{ form.court }}
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium mb-1">ΓΑΚ Αριθμός</label>
+            {{ form.gak_number }}
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Έτος</label>
+            {{ form.gak_year }}
+          </div>
+        </div>
+        <button class="mt-4 inline-flex items-center px-4 py-2 rounded-xl shadow bg-blue-600 text-white hover:bg-blue-700">
+          Αναζήτηση
+        </button>
+      </form>
+    </div>
+  </body>
+</html>

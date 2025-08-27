@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="el">
+  <head>
+    <meta charset="utf-8" />
+    <title>Σύνδεση</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-50 min-h-screen grid place-items-center">
+    <form method="post" class="w-full max-w-sm bg-white p-6 rounded-2xl shadow space-y-4">
+      {% csrf_token %}
+      <h1 class="text-xl font-semibold mb-4">Σύνδεση</h1>
+      <div>
+        <label class="block text-sm font-medium mb-1">Όνομα χρήστη</label>
+        <input type="text" name="username" autofocus required class="w-full border rounded px-3 py-2" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Κωδικός</label>
+        <input type="password" name="password" required class="w-full border rounded px-3 py-2" />
+      </div>
+      {% if form.errors %}
+      <p class="text-red-600 text-sm">Λάθος στοιχεία. Προσπαθήστε ξανά.</p>
+      {% endif %}
+      <button class="w-full bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-2">Σύνδεση</button>
+    </form>
+  </body>
+</html>
