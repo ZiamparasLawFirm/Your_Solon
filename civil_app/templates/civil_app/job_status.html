@@ -1,0 +1,11 @@
+{% extends "civil_app/base.html" %}
+{% block title %}Αναζήτηση Αστικών | Αρχική{% endblock %}
+{% block content %}
+  <div id="status-card"
+       hx-get="{% url 'civil_app:job_status_api' job.id %}"
+       hx-trigger="load, every 2s"
+       hx-target="#status-card"
+       hx-swap="outerHTML">
+    <p>Ελέγχω… Παρακαλώ περιμένετε</p>
+  </div>
+{% endblock %}

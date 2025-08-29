@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="el"><head>
+  <meta charset="utf-8" />
+  <title>Αστικά — Αναζήτηση Πορείας</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f6f7f9;margin:0}
+    .wrap{max-width:800px;margin:40px auto;padding:0 16px}
+    .card{background:#fff;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.08);padding:20px}
+    .row{margin-bottom:12px}
+    label{display:block;margin:0 0 6px;font-size:14px;color:#111}
+    input,select{width:100%;padding:10px 12px;border:1px solid #d0d4d9;border-radius:10px;font-size:15px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .btn{padding:12px 14px;border:0;border-radius:12px;background:#2563eb;color:#fff;font-weight:600;cursor:pointer}
+    .btn:hover{background:#1d4ed8}
+    .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+    a{color:#2563eb;text-decoration:none} a:hover{text-decoration:underline}
+  </style>
+</head><body>
+  <div class="wrap">
+    <div class="top">
+      <h1 style="margin:0;font-size:22px">Αστικά — Πορεία Υπόθεσης</h1>
+      <a href="/accounts/logout/">Αποσύνδεση</a>
+    </div>
+    <form method="post" class="card">
+      {% csrf_token %}
+      <div class="row">
+        <label>Όνομα Πελάτη</label>
+        {{ form.client_name }}
+      </div>
+      <div class="row">
+        <label>Κατάστημα</label>
+        {{ form.court }}
+      </div>
+      <div class="grid">
+        <div class="row">
+          <label>ΓΑΚ Αριθμός</label>
+          {{ form.gak_number }}
+        </div>
+        <div class="row">
+          <label>Έτος</label>
+          {{ form.gak_year }}
+        </div>
+      </div>
+      <button class="btn">Αναζήτηση</button>
+    </form>
+  </div>
+</body></html>

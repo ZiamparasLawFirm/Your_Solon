@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Αστικά — Αναζήτηση{% endblock %}
+
+{% block content %}
+  <h2 style="margin:0 0 12px">Αναζήτηση (Σόλων)</h2>
+
+  {% if form_error %}<div class="alert alert-danger">{{ form_error }}</div>{% endif %}
+{% if messages %}{% for message in messages %}<div class="alert alert-{{ message.tags|default:"info" }}">{{ message }}</div>{% endfor %}{% endif %}
+<form method="post" action="{% url 'civil_app:civil_form' %}" class="card" style="display:grid;gap:12px;max-width:720px">
+    {% csrf_token %}
+
+    <div style="display:grid;grid-template-columns:220px 1fr;gap:8px 12px;align-items:center">
+      <label for="client_name">Πελάτης</label>
+      <input id="client_name" name="client_name" type="text" placeholder="Ονοματεπώνυμο πελάτη" / value="{{ prefill.client_name|default_if_none:'' }}" >
+
+      <label for="court">Δικαστήριο</label>
+      <select id="court" name="court" required>
+        <option value="" selected disabled>— Επιλέξτε Δικαστήριο —</option>
+{% for c in courts %}
+          <option value="{{ c.id }}">{{ c.name }}</option>
+        {% endfor %}
+      </select>
+
+      <label for="gak_number">Γ.Α.Κ. Αριθμός</label>
+      <input id="gak_number" name="gak_number" type="text" required placeholder="π.χ. 70927" / value="{{ prefill.gak_number|default_if_none:'' }}" >
+
+      <label for="gak_year">Γ.Α.Κ. Έτος</label>
+      <input id="gak_year" name="gak_year" type="number" required placeholder="π.χ. 2025" / value="{{ prefill.gak_year|default_if_none:'' }}" >
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button type="submit">Αναζήτηση</button>
+      <a href="{% url 'civil_app:civil_form' %}" class="muted" style="line-height:32px">Καθαρισμός</a>
+    </div>
+  </form>
+{% endblock %}

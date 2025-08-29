@@ -1,0 +1,23 @@
+<div id="status-card">
+  {% if job.status == "queued" or job.status == "running" %}
+    <p>Ελέγχω… Παρακαλώ περιμένετε</p>
+  {% elif job.status == "failed" %}
+    <div class="alert error">
+      <strong>Αποτυχία:</strong> {{ job.error|default:"Άγνωστο σφάλμα" }}
+    </div>
+  {% elif job.status == "done" %}
+    <h2>Ολοκληρώθηκε — Στοιχεία Υπόθεσης: {{ job.client_name }}</h2>
+    {% if pairs and pairs|length %}
+      <dl class="pairs">
+        {% for p in pairs %}
+          <dt>{{ p.label }}</dt>
+          <dd>{{ p.value }}</dd>
+        {% endfor %}
+      </dl>
+    {% else %}
+      <p>Δεν υπάρχουν διαθέσιμα στοιχεία.</p>
+    {% endif %}
+  {% else %}
+    <p>Κατάσταση: {{ job.status }}</p>
+  {% endif %}
+</div>

@@ -1,0 +1,43 @@
+{% comment %} Injected into job_status.html via HTMX polling {% endcomment %}
+{% if job.status == "queued" or job.status == "running" %}
+  <div>Ελέγχω... Παρακαλώ περιμένετε...</div>
+{% elif job.status == "failed" %}
+  <div class="error">
+    <div>Σφάλμα αναζήτησης</div>
+    <div><small>{{ error|default:"—" }}</small></div>
+  </div>
+{% else %}
+  {# DONE #}
+  <div class="card">
+    <div class="row">
+      <div class="label">Δικαστήριο</div>
+      <div class="value">{{ data.Κατάστημα|default:"—" }}</div>
+    </div>
+    <div class="row">
+      <div class="label">ΓΑΚ</div>
+      <div class="value">{{ data.ΓΑΚ|default:"—" }}</div>
+    </div>
+
+    <hr class="sep" />
+
+    <div class="muted">Λεπτομέρειες (όπως στην σελίδα Σόλων)</div>
+
+    {% if ordered_fields %}
+      <div class="grid">
+        {% for label, value in ordered_fields %}
+          <div class="label">{{ label }}</div>
+          <div class="value">{{ value|default:"—" }}</div>
+        {% endfor %}
+      </div>
+    {% elif data.fields %}
+      <div class="grid">
+        {% for label, value in data.fields.items %}
+          <div class="label">{{ label }}</div>
+          <div class="value">{{ value|default:"—" }}</div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div>— Δεν ελήφθησαν πεδία.</div>
+    {% endif %}
+  </div>
+{% endif %}

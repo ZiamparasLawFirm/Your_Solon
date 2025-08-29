@@ -1,0 +1,28 @@
+{% if job.status == "queued" or job.status == "running" %}
+  <div id="status-card">
+    <p>Ελέγχω… Παρακαλώ περιμένετε</p>
+  </div>
+{% elif job.status == "failed" %}
+  <div id="status-card" class="error">
+    <h3>Σφάλμα</h3>
+    <pre>{{ job.error }}</pre>
+  </div>
+{% elif job.status == "done" %}
+  <div id="status-card">
+    <h3>Ολοκληρώθηκε — Στοιχεία Υπόθεσης: {{ job.client_name }}</h3>
+    <dl class="pairs">
+      {% for label, value in pairs %}
+        {% if label != "Απόφαση" and value %}
+        <div class="pair">
+          <dt>{{ label }}</dt>
+          <dd>{{ value }}</dd>
+        </div>
+        {% endif %}
+      {% empty %}
+        <p>Δεν υπάρχουν διαθέσιμα στοιχεία.</p>
+      {% endfor %}
+    </dl>
+  </div>
+{% else %}
+  <div id="status-card"><p>Άγνωστη κατάσταση.</p></div>
+{% endif %}

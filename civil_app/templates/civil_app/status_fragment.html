@@ -1,0 +1,26 @@
+<div id="status-card"
+     {% if job.status == 'done' or job.status == 'failed' %}
+       hx-trigger="none"
+     {% else %}
+       hx-get="{% url 'civil_app:job_status_api' job.id %}"
+       hx-trigger="every 2s"
+       hx-target="#status-card"
+       hx-swap="outerHTML"
+     {% endif %}>
+  {% if job.status == 'failed' %}
+    <h3>Σφάλμα</h3>
+    <pre>{{ job.error }}</pre>
+  {% elif job.status == 'queued' or job.status == 'running' %}
+    <p>Ελέγχω… Παρακαλώ περιμένετε</p>
+  {% elif job.status == 'done' %}
+    <h3>Ολοκληρώθηκε — Στοιχεία Υπόθεσης: {{ job.client_name|default:"-" }}</h3>
+    <dl>
+      {% for label, value in pairs %}
+        {% if value %}
+          <dt>{{ label }}</dt>
+          <dd>{{ value }}</dd>
+        {% endif %}
+      {% endfor %}
+    </dl>
+  {% endif %}
+</div>

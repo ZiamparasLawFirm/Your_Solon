@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="el">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}Αναζήτηση Αστικών{% endblock %}</title>
+  {% load static %}
+  <link rel="stylesheet" href="{% static 'civil_app/main.css' %}">
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <style>
+    .navbar{padding:.75rem 1rem;border-bottom:1px solid #e5e7eb;display:flex;gap:.5rem}
+    .container{max-width:900px;margin:1rem auto;padding:0 1rem}
+    .pairs{display:grid;grid-template-columns: 260px 1fr;gap:.25rem .75rem}
+    .pairs dt{font-weight:600}
+    .alert.error{background:#fee2e2;border:1px solid #fecaca;padding:.75rem;border-radius:.5rem}
+  </style>
+</head>
+<body>
+<nav class="navbar">
+  <a href="/civil/">Αρχική</a>
+  <span>|</span>
+  <span>Αναζήτηση Αστικών</span>
+</nav>
+<main class="container">
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

@@ -1,0 +1,27 @@
+<div id="status-card">
+  {% if job.status == "queued" %}
+    <p>Σε αναμονή… Παρακαλώ περιμένετε.</p>
+  {% elif job.status == "running" %}
+    <p>Ελέγχω… Παρακαλώ περιμένετε.</p>
+  {% elif job.status == "failed" %}
+    <p class="status-failed">Απέτυχε: {{ job.error|default:"-" }}</p>
+  {% elif job.status == "done" %}
+    <p class="status-done">Ολοκληρώθηκε.</p>
+
+    <h3 style="margin-top:1rem">Στοιχεία</h3>
+    <div class="kv">
+      <div><strong>Δικαστήριο</strong></div><div>{{ header.Δικαστήριο }}</div>
+      <div><strong>ΓΑΚ</strong></div><div>{{ header.ΓΑΚ }}</div>
+      <div><strong>Απόφαση</strong></div><div>{{ header.Απόφαση|default:"-" }}</div>
+    </div>
+
+    {% if ordered %}
+      <h3 style="margin-top:1rem">Λεπτομέρειες (όπως στη σελίδα Σόλων)</h3>
+      <div class="kv">
+        {% for label, value in ordered %}
+          <div><strong>{{ label }}</strong></div><div>{{ value }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endif %}
+</div>

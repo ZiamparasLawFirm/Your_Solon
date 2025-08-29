@@ -1,0 +1,4 @@
+/* spinner */
+.spinner{display:inline-block;width:1rem;height:1rem;border:2px solid rgba(0,0,0,.2);border-top-color:rgba(0,0,0,.6);border-radius:50%;animation:spin .8s linear infinite;margin-right:8px;vertical-align:-2px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.waiting{display:flex;align-items:center;gap:.5rem}
