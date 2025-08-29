@@ -5,18 +5,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="484e46c2-d606-4050-bd49-8647e3b6e355" name="Changes" comment="Initial commit">
-      <change afterPath="$PROJECT_DIR$/civil_app/static/civil_app/logo.jpg" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/civil_app/static/civil_app/main.css" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/civil_app/templates/civil_app/under_construction.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/celery.py" beforeDir="false" afterPath="$PROJECT_DIR$/your_solon/celery.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/civil_app/management/commands/sync_courts.py" beforeDir="false" afterPath="$PROJECT_DIR$/civil_app/management/commands/sync_courts.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/civil_app/tasks.py" beforeDir="false" afterPath="$PROJECT_DIR$/civil_app/tasks.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/civil_app/urls.py" beforeDir="false" afterPath="$PROJECT_DIR$/civil_app/urls.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/init.py" beforeDir="false" afterPath="$PROJECT_DIR$/init.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/civil_app/civil_search.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/civil_app/civil_search.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/civil_app/job_status.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/civil_app/job_status.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/registration/login.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/registration/login.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/civil_app/static/civil_app/main.css" beforeDir="false" afterPath="$PROJECT_DIR$/civil_app/static/civil_app/main.css" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -54,23 +44,23 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "DefaultHtmlFileTemplate": "HTML File",
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "main",
-    "last_opened_file_path": "/Users/dimitrisziamparas/PycharmProjects/Your_Solon/civil_app/static/civil_app",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;DefaultHtmlFileTemplate&quot;: &quot;HTML File&quot;,
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/dimitrisziamparas/PycharmProjects/Your_Solon/civil_app/static/civil_app&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$/civil_app/static/civil_app" />
@@ -96,7 +86,8 @@
       <updated>1756322047525</updated>
       <workItem from="1756322048534" duration="3450000" />
       <workItem from="1756325546712" duration="6530000" />
-      <workItem from="1756360401265" duration="27157000" />
+      <workItem from="1756360401265" duration="28622000" />
+      <workItem from="1756491682378" duration="6963000" />
     </task>
     <task id="LOCAL-00001" summary="Initial commit">
       <option name="closed" value="true" />
@@ -106,7 +97,15 @@
       <option name="project" value="LOCAL" />
       <updated>1756326871107</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="Initial commit">
+      <option name="closed" value="true" />
+      <created>1756405099265</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1756405099265</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
