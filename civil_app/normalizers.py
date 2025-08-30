@@ -1,6 +1,8 @@
 from typing import Dict, Any
+import re
 
 DISPLAY_ORDER = [
+    "Υπόθεση",
     "Ημ. Κατάθεσης",
     "Γενικός Αριθμός Κατάθεσης/Έτος",
     "Ειδικός Αριθμός Κατάθεσης/Έτος",
@@ -10,25 +12,59 @@ DISPLAY_ORDER = [
     "Αριθμός Πινακίου",
     "Αριθμός Απόφασης/Έτος - Είδος Διατακτικού",
     "Αποτέλεσμα Συζήτησης",
+    "Δικάσιμος",
 ]
 
+def _pick_case_title(payload: Any) -> str:
+    """
+    Try multiple keys so we don't rely on a single one.
+    jobs.py will inject client_name/subject/case_title; we also accept a pre-filled 'Υπόθεση'.
+    """
+    if not isinstance(payload, dict):
+        return ""
+    for key in ("Υπόθεση", "case_title", "client_name", "subject", "name", "client"):
+        v = payload.get(key)
+        if v:
+            return str(v).strip()
+    return ""
+
+def _extract_dikasimos(pinakio_value: str) -> str:
+    """
+    Extract a date from 'Αριθμός Πινακίου' text and normalize to dd/mm/yyyy.
+    Matches dd/mm/yyyy, dd-mm-yyyy, dd.mm.yyyy.
+    """
+    s = (pinakio_value or "").strip()
+    m = re.search(r"\b(\d{1,2})[./-](\d{1,2})[./-](\d{4})\b", s)
+    if not m:
+        return ""
+    d, mth, y = m.groups()
+    return f"{int(d):02d}/{int(mth):02d}/{y}"
+
 def clean_solon_fields(payload: Any) -> Dict[str, str]:
-    """
-    Accepts the scraper payload and returns a plain dict with the above greek keys.
-    Missing keys are returned as empty strings to keep the UI stable.
-    """
-    fields = {}
+    # 1) Gather scraped fields
+    raw_fields: Dict[str, str] = {}
     if isinstance(payload, dict):
         f = payload.get("fields")
         if isinstance(f, dict):
-            fields = {k: (v or "").strip() for k, v in f.items()}
+            raw_fields = {k: (v or "").strip() for k, v in f.items()}
         else:
-            # fallback: try to treat the whole payload as already-normalized
-            fields = {k: (v or "").strip() for k, v in payload.items() if isinstance(v, str)}
+            raw_fields = {k: (v or "").strip() for k, v in payload.items() if isinstance(v, str)}
 
-    # Ensure all keys exist (UI expects them)
-    return {k: fields.get(k, "") for k in DISPLAY_ORDER}
+    # 2) Compute extras
+    case_title = _pick_case_title(payload)
+    dikasimos  = _extract_dikasimos(raw_fields.get("Αριθμός Πινακίου", ""))
 
-# Back-compat alias some code paths might import
+    # 3) Ordered output
+    out: Dict[str, str] = {}
+    for key in DISPLAY_ORDER:
+        if key == "Υπόθεση":
+            out[key] = case_title
+        elif key == "Δικάσιμος":
+            out[key] = dikasimos
+        else:
+            out[key] = raw_fields.get(key, "")
+    return out
+
+# Back-compat alias used elsewhere
 def normalize_payload(payload: Any) -> Dict[str, str]:
     return clean_solon_fields(payload)

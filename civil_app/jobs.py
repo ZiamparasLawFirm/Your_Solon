@@ -136,7 +136,7 @@ def _run_job(job_id: int) -> None:
         raw = scrape_solon_civil_adf(court_label, gak_num, gak_year)
 
         # Normalize to displayable dict (Greek keys, etc.)
-        fields = clean_solon_fields(raw)
+        fields = clean_solon_fields(dict(raw, Υπόθεση=(getattr(job,'client_name','') or getattr(job,'subject','') or ''), case_title=(getattr(job,'subject','') or getattr(job,'client_name','') or ''), client_name=getattr(job,'client_name',''), subject=getattr(job,'subject','')))
 
         # Persist snapshot atomically, ensuring we have a Case
         with transaction.atomic():
