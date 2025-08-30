@@ -1,10 +1,10 @@
 {% load static %}
-<!doctype html>
+<!DOCTYPE html>
 <html lang="el">
 <head>
   <meta charset="utf-8">
-  <title>{% block title %}YourSolon{% endblock %}</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>YourSolon</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="{% static 'civil_app/main.css' %}">
   <script src="https://unpkg.com/htmx.org@2.0.2"></script>
 </head>
@@ -15,12 +15,16 @@
       <span class="brand-name">YourSolon</span>
     </div>
     <nav class="nav">
-      <a href="{% url 'civil_app:home' %}">Αρχική</a>
+      <!-- Only use URL names that exist -->
+      <a href="{% url 'civil_app:civil_form' %}">Αρχική</a>
       <a href="{% url 'civil_app:civil_form' %}">Αστικά</a>
-      <a href="{% url 'civil_app:civil_offsolon' %}">Αστικά(Εκτός Σόλων)</a>
-      <a href="{% url 'civil_app:admin_cases' %}">Διοικητικά</a>
-      <a href="{% url 'civil_app:calendar' %}">Ημερολόγιο</a>
-      <a href="{% url 'civil_app:penal' %}">Πιν. Ποινικών</a>
+
+      <!-- Placeholders for future sections (no reversing at render time) -->
+      <a href="#" aria-disabled="true">Αστικά (Εκτός Σόλων)</a>
+      <a href="#" aria-disabled="true">Διοικητικά</a>
+      <a href="#" aria-disabled="true">Ημερολόγιο</a>
+      <a href="#" aria-disabled="true">Πιν. Ποινικών</a>
+
       <a href="/accounts/logout/">Αποσύνδεση</a>
     </nav>
   </div>

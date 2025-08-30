@@ -1,26 +1,48 @@
-<div id="status-card"
-     {% if job.status == 'done' or job.status == 'failed' %}
-       hx-trigger="none"
-     {% else %}
-       hx-get="{% url 'civil_app:job_status_api' job.id %}"
-       hx-trigger="every 2s"
-       hx-target="#status-card"
-       hx-swap="outerHTML"
-     {% endif %}>
-  {% if job.status == 'failed' %}
-    <h3>Σφάλμα</h3>
-    <pre>{{ job.error }}</pre>
-  {% elif job.status == 'queued' or job.status == 'running' %}
+{% comment %}
+This fragment is swapped into #status-card by HTMX.
+It assumes 'job' is in context and job.snapshot may hold data_json (dict).
+{% endcomment %}
+
+{% if job.status == "running" %}
+  <div id="status-card">
     <p>Ελέγχω… Παρακαλώ περιμένετε</p>
-  {% elif job.status == 'done' %}
-    <h3>Ολοκληρώθηκε — Στοιχεία Υπόθεσης: {{ job.client_name|default:"-" }}</h3>
-    <dl>
-      {% for label, value in pairs %}
-        {% if value %}
-          <dt>{{ label }}</dt>
-          <dd>{{ value }}</dd>
-        {% endif %}
-      {% endfor %}
-    </dl>
-  {% endif %}
-</div>
+  </div>
+
+{% elif job.status == "done" %}
+  <div id="status-card">
+    <h3>Ολοκληρώθηκε — Στοιχεία Υπόθεσης: {{ job.case.client_name|default:"(χωρίς όνομα)" }}</h3>
+
+    {% with data=job.snapshot.data_json %}
+      {% if data %}
+        <table>
+          <tbody>
+          {% for k, v in data.items %}
+            <tr>
+              <th style="text-align:left; padding:4px 8px;">{{ k }}</th>
+              <td style="padding:4px 8px;">{{ v|default:"—" }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p>Δεν υπάρχουν διαθέσιμα στοιχεία.</p>
+      {% endif %}
+    {% endwith %}
+  </div>
+
+{% elif job.status == "no_results" %}
+  <div id="status-card">
+    <h3>Δεν βρέθηκαν αποτελέσματα.</h3>
+  </div>
+
+{% elif job.status == "error" %}
+  <div id="status-card">
+    <h3>Σφάλμα</h3>
+    <pre style="white-space:pre-wrap">{{ job.error }}</pre>
+  </div>
+
+{% else %}
+  <div id="status-card">
+    <p>Άγνωστη κατάσταση: {{ job.status }}</p>
+  </div>
+{% endif %}

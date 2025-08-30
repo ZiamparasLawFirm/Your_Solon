@@ -1,25 +1,13 @@
-# civil_app/views.py
 from __future__ import annotations
-from django.conf import settings
-
-import re
-from .jobs import start_civil_job, run_civil_job
-from typing import Dict, List, Tuple
-
-from django.contrib.auth.decorators import login_required
-from django.contrib import messages
-from django.http import HttpRequest, HttpResponse, JsonResponse
-from django.shortcuts import render, redirect, get_object_or_404
-from django.template.loader import render_to_string
 import json
-from django.utils import timezone
-from django.utils.html import escape
-from django.urls import reverse
+from typing import List, Tuple, Dict, Any
+from django.contrib.auth.decorators import login_required
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from .models import CivilSearchJob, Court
+from .jobs import run_civil_job
 
-from .models import CivilSearchJob, CaseSnapshot, Court
-from civil_app.jobs import start_civil_job
-# --- MySolon display order (left column in your screenshot) ---
-MYSOLON_FIELDS_ORDER: List[str] = [
+DISPLAY_ORDER: List[str] = [
     "Ημ. Κατάθεσης",
     "Γενικός Αριθμός Κατάθεσης/Έτος",
     "Ειδικός Αριθμός Κατάθεσης/Έτος",
@@ -31,58 +19,20 @@ MYSOLON_FIELDS_ORDER: List[str] = [
     "Αποτέλεσμα Συζήτησης",
 ]
 
-_date_rx = re.compile(r"^\d{2}/\d{2}/\d{4}$")
-
-def _tidy_and_order_fields(fields: Dict[str, str]) -> List[Tuple[str, str]]:
-    """
-    1) Fix common ADF swap: if 'Ημ. Κατάθεσης' is NOT a date but
-       'Γενικός ...' IS a date -> swap their values.
-    2) Return a list of (label, value) sorted in MySolon order,
-       with any extra fields appended at the end.
-    """
-    if not fields:
-        return []
-
-    k_date = next((k for k in fields.keys() if k.replace(" ", "") in ("Ημ.Κατάθεσης", "Ημ.Κατάθεσης")), "Ημ. Κατάθεσης")
-    # Normalize possible key variants to match our order label
-    # If the exact key "Ημ. Κατάθεσης" exists use that, else keep k_date.
-    if "Ημ. Κατάθεσης" in fields:
-        k_date = "Ημ. Κατάθεσης"
-
-    k_gen = "Γενικός Αριθμός Κατάθεσης/Έτος"
-
-    if k_date in fields and k_gen in fields:
-        v_date = (fields.get(k_date) or "").strip()
-        v_gen  = (fields.get(k_gen) or "").strip()
-        if not _date_rx.match(v_date) and _date_rx.match(v_gen):
-            fields[k_date], fields[k_gen] = v_gen, v_date
-
-    ordered: List[Tuple[str, str]] = []
-    seen = set()
-    for label in MYSOLON_FIELDS_ORDER:
-        if label in fields:
-            ordered.append((label, fields[label]))
-            seen.add(label)
-
-    # Append any remaining fields we didn’t explicitly order
-    for k, v in fields.items():
-        if k not in seen:
-            ordered.append((k, v))
-
-    return ordered
-
 @login_required
 def civil_form(request: HttpRequest) -> HttpResponse:
-    courts = Court.objects.filter(is_active=True).order_by("name")
+    courts = Court.objects.order_by("name")
     if request.method == "POST":
         client_name = request.POST.get("client_name", "").strip()
-        court_id    = request.POST.get("court", "").strip()
-        gak_number  = request.POST.get("gak_number", "").strip()
-        gak_year    = request.POST.get("gak_year", "").strip()
+        court_id = request.POST.get("court", "").strip()
+        gak_number = request.POST.get("gak_number", "").strip()
+        gak_year = request.POST.get("gak_year", "").strip()
 
         if not court_id:
-            messages.error(request, "Παρακαλώ επιλέξτε Δικαστήριο.")
-            return render(request, "civil_app/civil_form.html", {"courts": courts, "form_error": "Παρακαλώ επιλέξτε Δικαστήριο.", "prefill": {"client_name": client_name, "gak_number": gak_number, "gak_year": gak_year}})
+            return render(request, "civil_app/civil_form.html",
+                          {"courts": courts, "error": "Επιλέξτε δικαστήριο.",
+                           "prefill": {"client_name": client_name, "gak_number": gak_number, "gak_year": gak_year}})
+
         court = get_object_or_404(Court, id=court_id)
         job = CivilSearchJob.objects.create(
             user=request.user,
@@ -92,11 +42,8 @@ def civil_form(request: HttpRequest) -> HttpResponse:
             gak_year=gak_year,
             status="queued",
         )
-        if settings.DEBUG:
-            run_civil_job(job.id)
-        else:
-            start_civil_job(job.id)
-        # fire async (tasks.py respects CELERY_TASK_ALWAYS_EAGER=True in dev)
+        # Run synchronously in dev to avoid getting stuck on waiting
+        run_civil_job(job.id)
         return redirect("civil_app:job_status_page", job_id=job.id)
 
     return render(request, "civil_app/civil_form.html", {"courts": courts})
@@ -104,226 +51,62 @@ def civil_form(request: HttpRequest) -> HttpResponse:
 @login_required
 def job_status_page(request: HttpRequest, job_id: int) -> HttpResponse:
     job = get_object_or_404(CivilSearchJob, id=job_id, user=request.user)
-    # Page with HTMX that polls job_status_api
     return render(request, "civil_app/job_status.html", {"job": job})
 
 @login_required
-
-@login_required
-@login_required
 def job_status_api(request: HttpRequest, job_id: int) -> HttpResponse:
     job = get_object_or_404(CivilSearchJob, id=job_id, user=request.user)
 
-    # Build ordered field/value pairs from snapshot JSON without hardcoding values.
-    pairs = []
-    data = {}
-    if getattr(job, "snapshot", None) and hasattr(job.snapshot, "data_json") and job.snapshot.data_json:
-        data = job.snapshot.data_json or {}
-        # Some scrapers put fields inside a 'fields' dict; merge non-destructively.
-        inner = data.get("fields") or {}
-        merged = {}
-        merged.update(inner)
-        for k, v in data.items():
-            if k != "fields" and k not in merged:
-                merged[k] = v
-        data = merged
+    data: Dict[str, Any] = {}
+    if getattr(job, "snapshot_id", None):
+        data = getattr(job.snapshot, "data_json", {}) or {}
 
-    def val(key):
-        return (data.get(key) or "").strip()
+    normalized: Dict[str, Any] = data.get("normalized", data) or {}
+    raw_payload: Any = data.get("raw")
 
-    # Normalization: the "Γενικός Αριθμός Κατάθεσης/Έτος" sometimes contains concatenated info.
-    # Keep only the first token that looks like NNNN/YYYY.
-    def fix_gen(v):
-        v = (v or "").strip()
-        parts = v.split()
-        if parts:
-            first = parts[0]
-            if "/" in first and first.replace("/", "").isdigit() == False:
-                # still keep first if it looks like 123/2025
-                pass
-            return first
-        return v
+    display_fields: List[Tuple[str, str]] = []
+    if isinstance(normalized, dict):
+        display_fields = [(label, (normalized.get(label) or "")) for label in DISPLAY_ORDER]
 
-    order = [
-        ("Ημ. Κατάθεσης", "Ημ. Κατάθεσης"),
-        ("Γενικός Αριθμός Κατάθεσης/Έτος", "Γενικός Αριθμός Κατάθεσης/Έτος"),
-        ("Ειδικός Αριθμός Κατάθεσης/Έτος", "Ειδικός Αριθμός Κατάθεσης/Έτος"),
-        ("Διαδικασία", "Διαδικασία"),
-        ("Αντικείμενο", "Αντικείμενο"),
-        ("Είδος", "Είδος"),
-        ("Αριθμός Πινακίου", "Αριθμός Πινακίου"),
-        ("Αριθμός Απόφασης/Έτος - Είδος Διατακτικού", "Αριθμός Απόφασης/Έτος - Είδος Διατακτικού"),
-        ("Αποτέλεσμα Συζήτησης", "Αποτέλεσμα Συζήτησης"),
-    ]
+    debug = ("debug" in request.GET)
+    raw_pretty = None
+    if debug and raw_payload is not None:
+        try:
+            raw_pretty = json.dumps(raw_payload, ensure_ascii=False, indent=2)
+        except Exception:
+            raw_pretty = str(raw_payload)
 
-    for label, key in order:
-        v = val(key)
-        if label == "Γενικός Αριθμός Κατάθεσης/Έτος":
-            v = fix_gen(v)
-        if v:
-            pairs.append((label, v))
+    return render(
+        request,
+        "civil_app/status_fragment.html",
+        {
+            "job": job,
+            "display_fields": display_fields,
+            "has_raw": raw_payload is not None,
+            "raw_pretty": raw_pretty,
+        },
+    )
 
-    return render(request, "civil_app/job_status_fragment.html", {"job": job, "pairs": pairs})
+from django.contrib.auth.decorators import login_required
 
-def job_status_api(request: HttpRequest, job_id: int) -> HttpResponse:
+@login_required
+def debug_direct_scrape(request):
     """
-    Returns the HTML fragment with the current job status. HTMX swaps into the page.
+    TEMP endpoint: call the scraper directly to compare results under Django.
+    GET params: court_id, gak_number, gak_year
+    Example:
+      /civil/debug/scrape/?court_id=50&gak_number=70927&gak_year=2025
     """
-    job = get_object_or_404(CivilSearchJob, id=job_id, user=request.user)
+    from django.http import JsonResponse
+    from .solon_scraper_adf import scrape_solon_civil_adf
+    from .models import Court
 
-    ctx = {"job": job, "ordered_fields": None, "data": None, "error": None}
-    if job.status in ("done", "failed"):
-        snap = CaseSnapshot.objects.filter(job=job).order_by("-created_at").first()
-        payload = snap.data if snap else None
-        ctx["data"] = payload
-
-        if payload and isinstance(payload, dict):
-            fields = (payload.get("fields") or {}) if isinstance(payload.get("fields"), dict) else {}
-            ctx["ordered_fields"] = _tidy_and_order_fields(fields)
-
-        if job.status == "failed":
-            ctx["error"] = job.error_message or "Σφάλμα αναζήτησης."
-
-    return render(request, "civil_app/_status_fragment.html", ctx)
-
-# ----------------- Navbar placeholders -----------------
-
-@login_required
-def home(request: HttpRequest) -> HttpResponse:
-    return render(request, "civil_app/under_construction.html", {"title": "Αρχική"})
-
-@login_required
-def civil_offsolon(request: HttpRequest) -> HttpResponse:
-    return render(request, "civil_app/under_construction.html", {"title": "Αστικά (Εκτός Σόλων)"})
-
-@login_required
-def admin_cases(request: HttpRequest) -> HttpResponse:
-    return render(request, "civil_app/under_construction.html", {"title": "Διοικητικά"})
-
-@login_required
-def calendar(request: HttpRequest) -> HttpResponse:
-    return render(request, "civil_app/under_construction.html", {"title": "Ημερολόγιο"})
-
-@login_required
-def penal(request: HttpRequest) -> HttpResponse:
-    return render(request, "civil_app/under_construction.html", {"title": "Πιν. Ποινικών"})
-
-
-# --- override job_status_api to send HX-Trigger & ordered fields ---
-from django.http import HttpResponse  # ensure available
-
-FIELD_ORDER = [
-    "Ημ. Κατάθεσης",
-    "Γενικός Αριθμός Κατάθεσης/Έτος",
-    "Ειδικός Αριθμός Κατάθεσης/Έτος",
-    "Διαδικασία",
-    "Αντικείμενο",
-    "Είδος",
-    "Αριθμός Πινακίου",
-    "Αριθμός Απόφασης/Έτος - Είδος Διατακτικού",
-    "Αποτέλεσμα Συζήτησης",
-]
-
-@login_required
-def job_status_api(request: HttpRequest, job_id: int) -> HttpResponse:
-    job = get_object_or_404(CivilSearchJob, id=job_id, user=request.user)
-
-    ordered = [
-        "Ημ. Κατάθεσης",
-        "Γενικός Αριθμός Κατάθεσης/Έτος",
-        "Ειδικός Αριθμός Κατάθεσης/Έτος",
-        "Διαδικασία",
-        "Αντικείμενο",
-        "Είδος",
-        "Αριθμός Πινακίου",
-        "Αριθμός Απόφασης/Έτος - Είδος Διατακτικού",
-        "Αποτέλεσμα Συζήτησης",
-    ]
-
-    fields = None
-    if getattr(job, "snapshot_id", None) and isinstance(job.snapshot.data_json, dict):
-        payload = job.snapshot.data_json
-        fields = payload.get("fields") or payload.get("normalized_fields") or {}
-
-        # Keep only the date for "Ημ. Κατάθεσης" (e.g. 24/03/2025)
-        if isinstance(fields, dict):
-            v = fields.get("Ημ. Κατάθεσης", "")
-            m = re.search(r"\b\d{2}/\d{2}/\d{4}\b", v or "")
-            if m:
-                fields["Ημ. Κατάθεσης"] = m.group(0)
-
-    ctx = {"job": job, "fields": fields, "ordered": ordered}
-    return render(request, "civil_app/status_fragment.html", ctx)
-
-@login_required
-def job_status_api(request: HttpRequest, job_id: int) -> HttpResponse:
-    job = get_object_or_404(CivilSearchJob, id=job_id, user=request.user)
-
-    # If it's stuck too long in running/queued, fail it to avoid infinite "waiting"
-    if job.status in ("queued", "running"):
-        # 90s since last update -> timeout
-        if (timezone.now() - job.updated_at).total_seconds() > 90:
-            job.status = "failed"
-            job.error = job.error or "Έληξε το χρονικό όριο ελέγχου. Παρακαλώ ξαναπροσπαθήστε."
-            job.save(update_fields=["status", "error", "updated_at"])
-
-    poll_url = reverse('civil_app:job_status_api', kwargs={'job_id': job.id})
-
-    def wrap(content: str, running: bool) -> HttpResponse:
-        # While running, return self-polling wrapper
-        if running:
-            html = (f'<div id="status-card" '
-                    f'hx-get="{poll_url}" '
-                    f'hx-trigger="load, every 2s" '
-                    f'hx-swap="outerHTML">{content}</div>')
-        else:
-            html = f'<div id="status-card">{content}</div>'
-        return HttpResponse(html)
-
-    if job.status in ("queued", "running"):
-        return wrap("<p>Ελέγχω… Παρακαλώ περιμένετε</p>", running=True)
-
-    if job.status == "failed":
-        msg = escape(job.error or "Αποτυχία ελέγχου.")
-        return wrap(f'<p class="error">Απέτυχε: {msg}</p>', running=False)
-
-    if job.status == "done":
-        client = escape(job.client_name or "")
-        header = f'<h3>Ολοκληρώθηκε — Στοιχεία Υπόθεσης: {client}</h3>'
-        # Your details block is still rendered by the page container; this just stops polling.
-        return wrap(header, running=False)
-
-    # Unknown: keep polling but show message
-    return wrap('<p class="error">Άγνωστη κατάσταση, συνεχίζω έλεγχο…</p>', running=True)
-
-
-@login_required
-def job_status_api(request: HttpRequest, job_id: int) -> HttpResponse:
-    job = get_object_or_404(CivilSearchJob, id=job_id, user=request.user)
-    ctx = {"job": job}
-
-    if job.status == "done" and getattr(job, "snapshot_id", None):
-        payload = getattr(job.snapshot, "data_json", {}) or {}
-        fields = payload.get("fields") or payload
-
-        order = [
-            "Ημ. Κατάθεσης",
-            "Γενικός Αριθμός Κατάθεσης/Έτος",
-            "Ειδικός Αριθμός Κατάθεσης/Έτος",
-            "Διαδικασία",
-            "Αντικείμενο",
-            "Είδος",
-            "Αριθμός Πινακίου",
-            "Αριθμός Απόφασης/Έτος - Είδος Διατακτικού",
-            "Αποτέλεσμα Συζήτησης",
-        ]
-        pairs = []
-        if isinstance(fields, dict):
-            for key in order:
-                val = fields.get(key)
-                if val not in (None, ""):
-                    pairs.append({"label": key, "value": val})
-        ctx["pairs"] = pairs
-
-    html = render_to_string("civil_app/_job_status_fragment.html", ctx, request=request)
-    return HttpResponse(html)
+    cid  = request.GET.get("court_id")
+    num  = request.GET.get("gak_number")
+    year = request.GET.get("gak_year")
+    try:
+        label = Court.objects.get(id=int(cid)).name
+    except Exception:
+        label = str(cid or "")
+    data = scrape_solon_civil_adf(label, str(num or ""), int(str(year or "0")))
+    return JsonResponse(data, safe=False)

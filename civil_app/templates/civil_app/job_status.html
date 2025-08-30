@@ -1,6 +1,12 @@
-{% extends "civil_app/base.html" %}
-{% block title %}Αναζήτηση Αστικών | Αρχική{% endblock %}
-{% block content %}
+<!doctype html>
+<html lang="el">
+<head>
+  <meta charset="utf-8">
+  <title>Κατάσταση αναζήτησης</title>
+</head>
+<body>
+  <h2>Κατάσταση αναζήτησης</h2>
+
   <div id="status-card"
        hx-get="{% url 'civil_app:job_status_api' job.id %}"
        hx-trigger="load, every 2s"
@@ -8,4 +14,10 @@
        hx-swap="outerHTML">
     <p>Ελέγχω… Παρακαλώ περιμένετε</p>
   </div>
-{% endblock %}
+
+  <p><a href="{% url 'civil_app:civil_form' %}">← Επιστροφή</a></p>
+
+  <!-- HTMX for polling -->
+  <script src="https://unpkg.com/htmx.org@2.0.2"></script>
+</body>
+</html>

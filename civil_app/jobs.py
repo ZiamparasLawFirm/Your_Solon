@@ -1,203 +1,172 @@
-from threading import Thread
-import re
-from .normalizers import normalize_payload, clean_solon_fields, clean_solon_fields
-from .normalizers import normalize_payload, clean_solon_fields, normalize_payload
+import logging
+import traceback
+from typing import Optional
 
-from .models import Case, CaseSnapshot, CivilSearchJob
-from .normalize import normalize_payload
+from django.db import transaction
+
+from .models import Court, Case, CaseSnapshot, CivilSearchJob
 from .solon_scraper_adf import scrape_solon_civil_adf
+from .normalizers import clean_solon_fields
+
+logger = logging.getLogger(__name__)
 
 
-def _run_job(job_id: int):
-    job = CivilSearchJob.objects.select_related("court").get(id=job_id)
+def _get_court_obj(job) -> Optional[Court]:
+    """
+    Return a Court instance for this job, if resolvable.
+    """
+    try:
+        v = getattr(job, "court", None)
+        # If it's already a relation
+        if v and isinstance(v, Court):
+            return v
+    except Exception:
+        pass
+
+    # Try FK id
+    try:
+        cid = getattr(job, "court_id", None)
+        if cid:
+            return Court.objects.get(id=int(cid))
+    except Exception:
+        logger.exception("Could not resolve Court for job id=%s", getattr(job, "id", None))
+    return None
+
+
+def _get_court_label(job) -> str:
+    """
+    A human-friendly label to pass to the scraper (Court.name if available).
+    """
+    c = _get_court_obj(job)
+    return (c.name if c and getattr(c, "name", None) else "") or ""
+
+
+def _ensure_job_case(job) -> Case:
+    """
+    Ensure job.case exists.
+    We key Cases primarily by (court, gak_number, gak_year) when possible.
+    Fallback to (court, subject) or plain subject.
+    """
+    if getattr(job, "case_id", None):
+        return job.case
+
+    court = _get_court_obj(job)
+    gak_number = (str(getattr(job, "gak_number", "")).strip() or None)
+    try:
+        gak_year = int(getattr(job, "gak_year", 0)) or None
+    except Exception:
+        gak_year = None
+
+    # Prefer a readable subject if present on the job
+    subject = (getattr(job, "subject", "") or "").strip() or "Χωρίς τίτλο"
+
+    # Build a robust get_or_create filter set
+    qs_filter = {}
+    if court:
+        qs_filter["court"] = court
+    if gak_number:
+        qs_filter["gak_number"] = gak_number
+    if gak_year:
+        qs_filter["gak_year"] = gak_year
+
+    if qs_filter:
+        # Use the strongest identity we have; set subject as a default if creating
+        case, _ = Case.objects.get_or_create(
+            **qs_filter,
+            defaults={
+                "subject": subject,
+                # Populate optional metadata if your model has them:
+                "procedure": getattr(job, "procedure", "") or "",
+                "pleading_type": getattr(job, "pleading_type", "") or "",
+                "eak_number": getattr(job, "eak_number", "") or "",
+                "eak_year": getattr(job, "eak_year", "") or None,
+            },
+        )
+    else:
+        # Absolute fallback: only subject
+        case, _ = Case.objects.get_or_create(
+            subject=subject,
+            defaults={
+                "court": court,
+                "gak_number": gak_number or "",
+                "gak_year": gak_year or 0,
+                "procedure": getattr(job, "procedure", "") or "",
+                "pleading_type": getattr(job, "pleading_type", "") or "",
+                "eak_number": getattr(job, "eak_number", "") or "",
+                "eak_year": getattr(job, "eak_year", "") or None,
+            },
+        )
+
+    job.case = case
+    try:
+        job.save(update_fields=["case"])
+    except Exception:
+        job.save()
+    return case
+
+
+def _has_meaningful_values(d: dict) -> bool:
+    """
+    Treat non-empty strings/numbers as meaningful. Empty/None/whitespace is not.
+    """
+    if not isinstance(d, dict) or not d:
+        return False
+    for v in d.values():
+        if isinstance(v, str) and v.strip():
+            return True
+        if isinstance(v, (int, float)) and v:
+            return True
+    return False
+
+
+def _run_job(job_id: int) -> None:
+    job = CivilSearchJob.objects.select_for_update(of=("self",)).get(id=job_id)
+
+    # Mark running
     job.status = "running"
     job.error = ""
-    job.save()
+    job.save(update_fields=["status", "error"])
 
     try:
-        court_label = (job.court.name if getattr(job, "court_id", None) else "") or getattr(job, "court_name", "") or ""
-        res = scrape_solon_civil_adf(court_label, str(job.gak_number), int(job.gak_year))
+        court_label = _get_court_label(job)
+        gak_num = str(getattr(job, "gak_number", "")).strip()
+        gak_year = int(getattr(job, "gak_year", 0))
 
-        case_title = f"{res.get('Κατάστημα') or court_label} — ΓΑΚ {job.gak_number}/{job.gak_year}"
+        # Scrape
+        raw = scrape_solon_civil_adf(court_label, gak_num, gak_year)
 
-        if hasattr(job, "case"):
-            job.case = Case.objects.get_or_create(court=job.court, gak_number=job.gak_number, gak_year=job.gak_year)[0]
-        if hasattr(job, "case_string"):
-            job.case_string = case_title
-        if hasattr(job, "snapshot"):
-            snapshot = CaseSnapshot.objects.create(case=job.case, data_json=res)
-            job.snapshot = snapshot
-        if hasattr(job, "result"):
-            job.result = res
+        # Normalize to displayable dict (Greek keys, etc.)
+        fields = clean_solon_fields(raw)
 
-        job.status = "done"
-        job.save()
+        # Persist snapshot atomically, ensuring we have a Case
+        with transaction.atomic():
+            case = _ensure_job_case(job)
+            snap = CaseSnapshot.objects.create(case=case, data_json=fields)
+            job.snapshot = snap
+
+            job.status = "done" if _has_meaningful_values(fields) else "no_results"
+            job.save(update_fields=["snapshot", "status"])
+
     except Exception as e:
-        job.status = "failed"
-        job.error = str(e)
-        job.save()
+        tb = traceback.format_exc()
+        logger.error("Job %s failed: %s\n%s", job_id, e, tb)
+        job.status = "error"
+        job.error = f"{e}\n{tb}"
+        try:
+            job.save(update_fields=["status", "error"])
+        except Exception:
+            job.save()
 
 
-def run_civil_job(job_id: int):
-    """Run synchronously (useful for debugging)."""
+def start_civil_job(job_id: int) -> None:
+    """
+    Placeholder for async queue. Currently runs synchronously.
+    """
+    run_civil_job(job_id)
+
+
+def run_civil_job(job_id: int) -> None:
+    """
+    Entry point invoked by views.
+    """
     _run_job(job_id)
-
-
-def start_civil_job(job_id: int):
-    """Fire-and-forget background thread."""
-    t = Thread(target=_run_job, args=(job_id,), daemon=True)
-    t.start()
-    return t
-
-
-def _normalize_payload_for_general_number(payload):
-    """
-    Keep only the true value for 'Γενικός Αριθμός Κατάθεσης/Έτος'
-    by extracting the first NNNNN/YYYY pattern from whatever the scraper
-    returned (no hardcoding; purely regex-based).
-    """
-    try:
-        fields = payload.get('fields') or {}
-        key = "Γενικός Αριθμός Κατάθεσης/Έτος"
-        val = fields.get(key)
-        if isinstance(val, str):
-            m = re.search(r"\b\d{1,7}/\d{4}\b", val)
-            if m:
-                fields[key] = m.group(0)
-        payload['fields'] = clean_solon_fields(fields)
-    except Exception:
-        # Best-effort; don't block the pipeline
-        pass
-    return payload
-
-
-def _normalize_fields_strict(payload):
-    """
-    Fix overlong values by keeping only the true number for
-    'Γενικός Αριθμός Κατάθεσης/Έτος' (first NNNNN/YYYY found).
-    No hardcoding of concrete values; regex-only.
-    """
-    try:
-        fields = payload.get('fields') or {}
-        # Be robust to label variants
-        candidates = [k for k in fields.keys()
-                      if ("Γενικός" in k and "Κατάθεσης" in k)
-                      or ("ΓΑΚ" in k)]
-        for key in candidates:
-            val = fields.get(key)
-            if isinstance(val, str):
-                m = re.search(r"\b\d{1,7}/\d{4}\b", val)
-                if m:
-                    fields[key] = m.group(0)
-        payload['fields'] = clean_solon_fields(fields)
-    except Exception:
-        pass
-    return payload
-
-
-def _normalize_general_number(payload):
-    """
-    Keep ONLY the real number (NNNNN/YYYY) for
-    'Γενικός Αριθμός Κατάθεσης/Έτος' (or labels containing 'Γενικός'/'ΓΑΚ').
-    Avoid picking dates like 24/03/2025 by requiring 4–8 digits before '/'.
-    """
-    try:
-        fields = (payload.get('fields') or {}).copy()
-        target_key = None
-        for k in fields.keys():
-            if ('Γενικός' in k and 'Κατάθεσης' in k) or ('ΓΑΚ' in k):
-                target_key = k
-                break
-        if target_key:
-            v = fields.get(target_key)
-            if isinstance(v, str):
-                m = re.search(r'(?<!\d)(\d{4,8}/\d{4})(?!\d)', v)
-                if not m:
-                    m = re.search(r'ΓΑΚ\D*(\d{4,8}/\d{4})', v, flags=re.I)
-                if not m:
-                    m = re.search(r'\b\d+/\d{4}\b', v)  # last resort
-                if m:
-                    fields[target_key] = m.group(1).strip()
-        payload = dict(payload)
-        payload = _fix_only_ga_field(payload)
-        payload = _normalize_case_numbers(payload)
-        payload = _normalize_general_number(payload)
-        payload['fields'] = clean_solon_fields(fields)
-        return payload
-    except Exception:
-        return payload
-
-
-def _normalize_case_numbers(payload):
-    """
-    Keep ONLY the real case number (NNNNN/YYYY) for:
-      - 'Γενικός Αριθμός Κατάθεσης/Έτος' (ΓΑΚ)
-      - 'Ειδικός Αριθμός Κατάθεσης/Έτος'
-    If a long string contains multiple tokens, keep the FIRST token only.
-    """
-    try:
-        fields = dict((payload.get('fields') or {}))
-    except Exception:
-        return payload
-
-    def _strip_first_num(v):
-        if not isinstance(v, str):
-            return v
-        v = v.replace("\xa0", " ").strip()
-        # Prefer 4–8 digits / 4 digits (avoid dates like 24/03/2025)
-        m = re.search(r'(?<!\d)(\d{4,8}/\d{4})(?!\d)', v)
-        if m:
-            return m.group(1)
-        # Fallback: patterns like 'ΓΑΚ 70927/2025'
-        m = re.search(r'(?:ΓΑΚ|Γ\.?\s*Α\.?\s*Κ\.?)\D*(\d{4,8}/\d{4})', v, flags=re.I)
-        if m:
-            return m.group(1)
-        # Last resort
-        m = re.search(r'\b(\d+/\d{4})\b', v)
-        return m.group(1) if m else v
-
-    new_fields = {}
-    for k, v in (fields.items()):
-        kl = k.casefold()
-        if ('γενικός' in kl and 'κατάθεσης' in kl) or re.search(r'γ\.?\s*α\.?\s*κ', kl, flags=re.I):
-            new_fields[k] = _strip_first_num(v)
-        elif ('ειδικός' in kl and 'κατάθεσης' in kl):
-            new_fields[k] = _strip_first_num(v)
-        else:
-            new_fields[k] = v
-
-    out = dict(payload)
-    out['fields'] = new_fields
-    return out
-
-
-def _fix_only_ga_field(payload):
-    # Keep ONLY the first real case token NNNNN/YYYY for ΓΑΚ / Γενικός Αριθμός Κατάθεσης/Έτος
-    try:
-        fields = dict(payload.get('fields') or {})
-    except Exception:
-        return payload
-
-    def only_case_token(val):
-        if not isinstance(val, str):
-            return val
-        val = val.replace("\xa0", " ").strip()
-        # prefer 4–8 digits / 4 digits (e.g. 70927/2025). Won't match dates like 24/03/2025.
-        m = re.search(r'(?<!\d)(\d{4,8}/\d{4})(?!\d)', val)
-        if m:
-            return m.group(1)
-        # fallback when "ΓΑΚ" text precedes the token
-        m = re.search(r'(?:ΓΑΚ|Γ\.?\s*Α\.?\s*Κ\.?)\D*(\d{4,8}/\d{4})', val, flags=re.I)
-        return m.group(1) if m else val
-
-    new_fields = {}
-    for k, v in (fields.items()):
-        kl = k.casefold()
-        if ('γενικός' in kl and 'κατάθεσης' in kl) or 'γ.α.κ' in kl or 'γακ' in kl:
-            new_fields[k] = only_case_token(v)
-        else:
-            new_fields[k] = v
-
-    out = dict(payload)
-    out['fields'] = new_fields
-    return out

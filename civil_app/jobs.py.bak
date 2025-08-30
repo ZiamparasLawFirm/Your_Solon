@@ -1,124 +1,131 @@
-from threading import Thread
-import re
+import logging
+import traceback
+from typing import Optional
 
-from .models import Case, CaseSnapshot, CivilSearchJob
-from .normalize import normalize_payload
+from django.db import transaction
+
+from .models import Court, Case, CaseSnapshot, CivilSearchJob
 from .solon_scraper_adf import scrape_solon_civil_adf
+from .normalizers import clean_solon_fields
+
+logger = logging.getLogger(__name__)
 
 
-def _run_job(job_id: int):
-    job = CivilSearchJob.objects.select_related("court").get(id=job_id)
+def _ensure_job_case(job, client_name: Optional[str] = None) -> Case:
+    """
+    Ensure job.case exists. If missing, create or get a Case by client_name.
+    Returns the Case instance.
+    """
+    if getattr(job, "case_id", None):
+        return job.case
+
+    name = (
+        (client_name or "").strip()
+        or getattr(job, "client_name", "",)
+        or getattr(job, "case_name", "",)
+    )
+    if not name:
+        name = "Χωρίς όνομα"
+
+    case, _ = Case.objects.get_or_create(client_name=name)
+    job.case = case
+    try:
+        job.save(update_fields=["case"])
+    except Exception:
+        job.save()
+    return case
+
+
+def _get_court_label(job) -> str:
+    """
+    Robustly derive the court label (human-friendly name) from the job.
+    Handles both FK and plain id/storage.
+    """
+    try:
+        # If it's a FK with .name
+        v = getattr(job, "court", None)
+        if v is not None:
+            try:
+                if hasattr(v, "name") and v.name:
+                    return v.name
+            except Exception:
+                pass
+
+        # Else try explicit court_id or a plain integer/string
+        cid = getattr(job, "court_id", None)
+        if cid is None:
+            val = getattr(job, "court", None)
+            if isinstance(val, (int, str)) and str(val).strip():
+                cid = val
+
+        if cid is not None and str(cid).strip():
+            return Court.objects.get(id=int(cid)).name
+    except Exception:
+        logger.exception("Could not resolve court label from job id=%s", getattr(job, "id", None))
+
+    return ""
+
+
+def _has_meaningful_values(d: dict) -> bool:
+    if not isinstance(d, dict) or not d:
+        return False
+    for v in d.values():
+        if isinstance(v, str) and v.strip():
+            return True
+        if isinstance(v, (int, float)) and v:
+            return True
+    return False
+
+
+def _run_job(job_id: int) -> None:
+    job = CivilSearchJob.objects.select_for_update(of=("self",)).get(id=job_id)
+
+    # Mark running
     job.status = "running"
     job.error = ""
-    job.save()
+    job.save(update_fields=["status", "error"])
 
     try:
-        court_label = (job.court.name if getattr(job, "court_id", None) else "") or getattr(job, "court_name", "") or ""
-        res = scrape_solon_civil_adf(court_label, str(job.gak_number), int(job.gak_year))
+        court_label = _get_court_label(job)
+        gak_num = str(getattr(job, "gak_number", "")).strip()
+        gak_year = int(getattr(job, "gak_year", 0))
 
-        case_title = f"{res.get('Κατάστημα') or court_label} — ΓΑΚ {job.gak_number}/{job.gak_year}"
+        # Call scraper
+        raw = scrape_solon_civil_adf(court_label, gak_num, gak_year)
 
-        if hasattr(job, "case"):
-            job.case = Case.objects.get_or_create(court=job.court, gak_number=job.gak_number, gak_year=job.gak_year)[0]
-        if hasattr(job, "case_string"):
-            job.case_string = case_title
-        if hasattr(job, "snapshot"):
-            snapshot = CaseSnapshot.objects.create(case=job.case, data_json=res)
-            job.snapshot = snapshot
-        if hasattr(job, "result"):
-            job.result = res
+        # Normalize to the field dict we display
+        fields = clean_solon_fields(raw)
 
-        job.status = "done"
-        job.save()
+        # Create/ensure the Case and snapshot atomically
+        with transaction.atomic():
+            case = _ensure_job_case(job, getattr(job, "client_name", None))
+            snap = CaseSnapshot.objects.create(case=case, data_json=fields)
+            job.snapshot = snap
+
+            # Decide status
+            job.status = "done" if _has_meaningful_values(fields) else "no_results"
+            job.save(update_fields=["snapshot", "status"])
+
     except Exception as e:
-        job.status = "failed"
-        job.error = str(e)
-        job.save()
+        tb = traceback.format_exc()
+        logger.error("Job %s failed: %s\n%s", job_id, e, tb)
+        job.status = "error"
+        job.error = f"{e}\n{tb}"
+        try:
+            job.save(update_fields=["status", "error"])
+        except Exception:
+            job.save()
 
 
-def run_civil_job(job_id: int):
-    """Run synchronously (useful for debugging)."""
+def start_civil_job(job_id: int) -> None:
+    """
+    Placeholder for async queue. Currently runs synchronously.
+    """
+    run_civil_job(job_id)
+
+
+def run_civil_job(job_id: int) -> None:
+    """
+    Public entry point used by views.
+    """
     _run_job(job_id)
-
-
-def start_civil_job(job_id: int):
-    """Fire-and-forget background thread."""
-    t = Thread(target=_run_job, args=(job_id,), daemon=True)
-    t.start()
-    return t
-
-
-def _normalize_payload_for_general_number(payload):
-    """
-    Keep only the true value for 'Γενικός Αριθμός Κατάθεσης/Έτος'
-    by extracting the first NNNNN/YYYY pattern from whatever the scraper
-    returned (no hardcoding; purely regex-based).
-    """
-    try:
-        fields = payload.get('fields') or {}
-        key = "Γενικός Αριθμός Κατάθεσης/Έτος"
-        val = fields.get(key)
-        if isinstance(val, str):
-            m = re.search(r"\b\d{1,7}/\d{4}\b", val)
-            if m:
-                fields[key] = m.group(0)
-        payload['fields'] = fields
-    except Exception:
-        # Best-effort; don't block the pipeline
-        pass
-    return payload
-
-
-def _normalize_fields_strict(payload):
-    """
-    Fix overlong values by keeping only the true number for
-    'Γενικός Αριθμός Κατάθεσης/Έτος' (first NNNNN/YYYY found).
-    No hardcoding of concrete values; regex-only.
-    """
-    try:
-        fields = payload.get('fields') or {}
-        # Be robust to label variants
-        candidates = [k for k in fields.keys()
-                      if ("Γενικός" in k and "Κατάθεσης" in k)
-                      or ("ΓΑΚ" in k)]
-        for key in candidates:
-            val = fields.get(key)
-            if isinstance(val, str):
-                m = re.search(r"\b\d{1,7}/\d{4}\b", val)
-                if m:
-                    fields[key] = m.group(0)
-        payload['fields'] = fields
-    except Exception:
-        pass
-    return payload
-
-
-def _normalize_general_number(payload):
-    """
-    Keep ONLY the real number (NNNNN/YYYY) for
-    'Γενικός Αριθμός Κατάθεσης/Έτος' (or labels containing 'Γενικός'/'ΓΑΚ').
-    Avoid picking dates like 24/03/2025 by requiring 4–8 digits before '/'.
-    """
-    try:
-        fields = (payload.get('fields') or {}).copy()
-        target_key = None
-        for k in fields.keys():
-            if ('Γενικός' in k and 'Κατάθεσης' in k) or ('ΓΑΚ' in k):
-                target_key = k
-                break
-        if target_key:
-            v = fields.get(target_key)
-            if isinstance(v, str):
-                m = re.search(r'(?<!\d)(\d{4,8}/\d{4})(?!\d)', v)
-                if not m:
-                    m = re.search(r'ΓΑΚ\D*(\d{4,8}/\d{4})', v, flags=re.I)
-                if not m:
-                    m = re.search(r'\b\d+/\d{4}\b', v)  # last resort
-                if m:
-                    fields[target_key] = m.group(1).strip()
-        payload = dict(payload)
-        payload = _normalize_general_number(payload)
-        payload['fields'] = fields
-        return payload
-    except Exception:
-        return payload
